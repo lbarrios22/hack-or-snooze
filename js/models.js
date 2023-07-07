@@ -12,7 +12,7 @@ class Story {
    *   - {title, author, url, username, storyId, createdAt}
    */
 
-  constructor({ storyId, title, author, url, username, createdAt }) {
+  constructor ({ storyId, title, author, url, username, createdAt }) {
     this.storyId = storyId;
     this.title = title;
     this.author = author;
@@ -25,7 +25,7 @@ class Story {
 
   getHostName() {
     // UNIMPLEMENTED: complete this function!
-    return "hostname.com";
+    return new URL(this.url).host;
   }
 }
 
@@ -35,7 +35,7 @@ class Story {
  */
 
 class StoryList {
-  constructor(stories) {
+  constructor (stories) {
     this.stories = stories;
   }
 
@@ -73,8 +73,31 @@ class StoryList {
    * Returns the new Story instance
    */
 
-  async addStory( /* user, newStory */) {
+  async addStory(user, { title, author, url }) {
     // UNIMPLEMENTED: complete this function!
+    const token = user.loginToken;
+    const res = await axios({
+      method: 'POST',
+      url: `${BASE_URL}/stories`,
+      data: { token, story: { title, author, url } }
+    });
+    const story = new Story(res.data.story);
+    this.stories.unshift(story);
+    user.ownStories.unshift(story);
+    return story;
+  }
+  async removeStory(user, storyId) {
+    const token = user.loginToken;
+    await axios({
+      url: `${BASE_URL}/stories/${storyId}`,
+      method: 'DELETE',
+      data: { token: user.loginToken }
+    });
+
+    this.stories = this.stories.filter(story => story.storyId !== storyId);
+
+    user.ownStories = user.ownStories.filter(story => story.storyId !== storyId);
+    user.favorites = user.favorites.filter(story => story.storyId !== storyId);
   }
 }
 
@@ -89,14 +112,14 @@ class User {
    *   - token
    */
 
-  constructor({
-                username,
-                name,
-                createdAt,
-                favorites = [],
-                ownStories = []
-              },
-              token) {
+  constructor ({
+    username,
+    name,
+    createdAt,
+    favorites = [],
+    ownStories = []
+  },
+    token) {
     this.username = username;
     this.name = name;
     this.createdAt = createdAt;
@@ -123,7 +146,7 @@ class User {
       data: { user: { username, password, name } },
     });
 
-    let { user } = response.data
+    let { user } = response.data;
 
     return new User(
       {
@@ -192,5 +215,27 @@ class User {
       console.error("loginViaStoredCredentials failed", err);
       return null;
     }
+  }
+  async addFavorite(story) {
+    this.favorites.push(story);
+    await this._addOrRemoveFavorite('add', story);
+  }
+
+  async removeFavorite(story) {
+    this.favorites = this.favorites.filter(s => s.storyId !== story.storyId);
+    await this._addOrRemoveFavorite('remove', story);
+  }
+
+  async _addOrRemoveFavorite(newState, story) {
+    const method = newState === 'add' ? 'POST' : 'DELETE';
+    const token = this.loginToken;
+    await axios({
+      url: `${BASE_URL}/users/${this.username}/favorites/${story.storyId}`,
+      method: method,
+      data: { token }
+    });
+  }
+  isFavorite(story) {
+    return this.favorites.some(s => (s.storyId === story.storyId));
   }
 }
